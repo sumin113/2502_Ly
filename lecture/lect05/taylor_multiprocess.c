@@ -4,10 +4,10 @@
 #include <sys/wait.h>
 #include <math.h>
 
-#define N 4      // 자식 프로세스 개수 (x 배열 길이)
-#define TERMS 3  // 테일러 급수 항 개수
+#define N 4
+#define TERMS 3
 
-// 테일러 급수로 sin(x) 계산
+/* 테일러 급수를 하나씩 계산한다. */
 double sinx_taylor(double x, int terms) {
     double value = x;
     double numer = x*x*x;
@@ -26,9 +26,9 @@ double sinx_taylor(double x, int terms) {
 int main() {
     double x[N] = {0, M_PI/6., M_PI/3., 0.134};
     double result[N];
-    int fd[N][2]; // 각 자식별 pipe
+    int fd[N][2];
 
-    // 1. 파이프 생성
+    /* 파이프를 생성한다. */
     for(int i=0; i<N; i++) {
         if(pipe(fd[i]) == -1) {
             perror("pipe");
@@ -36,36 +36,36 @@ int main() {
         }
     }
 
-    // 2. 자식 프로세스 생성
+    /* 자식 프로세스를 생성한다. */
     for(int i=0; i<N; i++) {
         pid_t pid = fork();
         if(pid < 0) {
             perror("fork");
             exit(1);
         }
-        if(pid == 0) { // 자식 프로세스
-            close(fd[i][0]); // 읽기용 닫기
+        if(pid == 0) {
+            close(fd[i][0]);
             double res = sinx_taylor(x[i], TERMS);
-            write(fd[i][1], &res, sizeof(double)); // 결과 부모에 전달
+            write(fd[i][1], &res, sizeof(double));	/* 부모 프로세스에 결과를 전달한다. */
             close(fd[i][1]);
             exit(0);
-        } else { // 부모 프로세스
-            close(fd[i][1]); // 쓰기용 닫기
+        } else {
+            close(fd[i][1]);
         }
     }
 
-    // 3. 부모: 모든 자식 종료 대기
+    /* 부모 프로세스는 자식 프로세스가 모두 종료될 때까지 대기한다. */
     for(int i=0; i<N; i++) {
         wait(NULL);
     }
 
-    // 4. 부모: 파이프에서 결과 읽기
+    /* 부모 프로세스가 파이프에서 결과를 받아온다. */
     for(int i=0; i<N; i++) {
         read(fd[i][0], &result[i], sizeof(double));
         close(fd[i][0]);
     }
 
-    // 5. 결과 출력
+    /* 결과를 출력한다. */
     for(int i=0; i<N; i++) {
         printf("sin(%.3f) by Taylor series = %.6f\n", x[i], result[i]);
         printf("sin(%.3f) = %.6f\n", x[i], sin(x[i]));
