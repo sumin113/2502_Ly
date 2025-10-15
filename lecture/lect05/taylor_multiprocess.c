@@ -66,7 +66,7 @@ int main() {
         wait(NULL);
     }
 
-    /* 부모 프로세스:는 파이프에서  계산 결과 받는다. */
+    /* 파이프에서 계산 결과를 받는다.  */
     for (int i = 0; i < N; i++) {
         read(fd[i][0], &result[i], sizeof(double));
         close(fd[i][0]);
