@@ -1,84 +1,77 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <math.h>
 
 #define N 4
-#define TERMS 3
+#define MAXLINE 100
 
 /* 테일러 급수 계산 함수 */
-double sinx_taylor(double x, int terms) {
-    double value = x;
-    double numer = x * x * x;
-    double denom = 6.0; // 3!
-    int sign = -1;
+void sinx_taylor(int num_elements, int terms, double* x, double* result) {
+    int child_id;
+    int fd[2*N], length;
+    pid_t pid;
+    char message[MAXLINE], line[MAXLINE];
 
-    for (int j = 1; j <= terms; j++) {
-        value += sign * numer / denom;
-        numer *= x * x;
-        denom *= (2.0 * j + 2) * (2.0 * j + 3);
-        sign *= -1;
+    for(int i = 0; i < num_elements; i++) {
+        pipe(fd + 2*i);
+
+	child_id = i;
+	pid = fork();
+	if(pid == 0){
+		break;
+	}else{
+		close(fd[2*i + 1]);
+	}
     }
-    return value;
+    if(pid == 0){
+
+    	int i = child_id;
+    	close(fd[2*i]);
+
+    	double value = x[i];
+    	double numer = x[i] * x[i] * x[i];
+    	double denom = 6.;
+    	int sign = -1;
+
+    	for(int j = 1; j <= terms; j++){
+		value += (double)sign * numer / denom;
+		numer *= x[i] * x[i];
+		denom *= (2.*(double)j + 2.) * (2.*(double)j + 3.);
+		sign *= -1;
+	}
+	result[i] = value;
+	sprintf(message, "%lf", result[i]);
+	length = strlen(message) + 1;
+	write(fd[2*i+1], message, length);
+
+	exit(child_id);
+    }else{
+	    for(int i = 0; i<num_elements; i++){
+		    int status;
+		    wait(&status);
+		    int child_id = status >> 8;
+		    read(fd[2*child_id], line, MAXLINE);
+
+		    result[child_id] = atof(line);
+	    }
+    }
 }
 
 int main() {
     double x[N] = {0, M_PI / 6., M_PI / 3., 0.134};
-    double result[N];
+    double res[N];
     int fd[N][2];
 
-    /* 자식마다 파이프 생성 */
+    sinx_taylor(N, 10, x, res);
+
     for (int i = 0; i < N; i++) {
-        if (pipe(fd[i]) == -1) {
-            perror("pipe");
-            exit(1);
-        }
+        printf("sin(%4.2f) by Taylor series = %.6f\n", x[i], res[i]);
+        printf("sin(%4.2f) = %.6f\n", x[i], sin(x[i]));
     }
-
-    /* 자식 프로세스를 생성하고 병렬으로 계산 */
-    for (int i = 0; i < N; i++) {
-        pid_t pid = fork();
-
-        if (pid < 0) {
-            perror("fork");
-            exit(1);
-        }
-
-        if (pid == 0) { /* 자식 프로세스 */
-            close(fd[i][0]); /* 읽기 닫기 */
-	    srand(getpid());
-	    sleep(rand() % 3 + 1); /* 병렬 진행 확인하기 위해 잠시 멈춤 */
-
-            double res = sinx_taylor(x[i], TERMS);
-            write(fd[i][1], &res, sizeof(double)); /* 부모프로세스에 결과 전송 */
-            close(fd[i][1]);
-
-            printf("[Child %d] sin(%.3f) 계산 완료\n", getpid(), x[i]);
-            exit(0);
-        } else {
-            close(fd[i][1]); /* 쓰기 닫기 */
-        }
-    }
-
-    /* 부모 프로세스는 자식 프로세스 완전 종료까지 대기 */
-    for (int i = 0; i < N; i++) {
-        wait(NULL);
-    }
-
-    /* 파이프에서 계산 결과를 받는다.  */
-    for (int i = 0; i < N; i++) {
-        read(fd[i][0], &result[i], sizeof(double));
-        close(fd[i][0]);
-    }
-
-    /* 최종결과 출력 */
-    printf("\nlect05 계산 결과:\n");
-    for (int i = 0; i < N; i++) {
-        printf("sin(%.3f) by Taylor series = %.6f\n", x[i], result[i]);
-        printf("sin(%.3f) = %.6f\n\n", x[i], sin(x[i]));
-    }
-
     return 0;
+
 }
 
